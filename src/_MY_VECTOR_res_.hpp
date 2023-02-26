@@ -49,7 +49,7 @@ namespace DataStructures {
 
         size_t capacity() const;
 
-        void reserve(int newmalloc);
+        void reserve(size_t newmalloc);
 
         void resize(size_t newsize, T val = T());
 
@@ -182,7 +182,7 @@ namespace DataStructures {
     }
 
     template<class T>
-    inline void Vector<T>::reserve(int newalloc) {
+    inline void Vector<T>::reserve(size_t newalloc) {
         if (newalloc <= capacity_) return;
 
         T* p = new T[newalloc];
@@ -231,8 +231,9 @@ namespace DataStructures {
     template<class T>
     void Vector<T>::deinitialize_elems(size_t& lft, size_t rht) {
         try {
-            for (uint64_t it = lft; it < rht; ++it) 
+            for (uint64_t it = lft; it < rht; ++it) {
                 (T*)(data_ + it*sizeof(T))->~T();
+            }
                 this->~Vector<T>();
         } catch(...) {
             throw;
@@ -347,7 +348,7 @@ namespace DataStructures {
     template<class T>
     inline const T & Vector<T>::operator[](int ind) const
     {
-        return const_cast<const T&>operator[](ind);
+        return const_cast<const T&>(operator[](ind));
     }
 
 

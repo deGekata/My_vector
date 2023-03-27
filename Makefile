@@ -5,7 +5,7 @@ uniq = $(if $1,$(firstword $1) $(call uniq,$(filter-out $(firstword $1),$1)))
 
 # Applicaton options
 APPLICATION = $(notdir $(CURDIR))# Application name is name of root holder
-GXX_STANDARD = 14 # 11, 14, 17, 20
+GXX_STANDARD = 20 # 11, 14, 17, 20
 OUT_FILE_NAME = $(APPLICATION).exe
 
 # Get project directory
@@ -28,7 +28,7 @@ LXXFLAGS = -fno-elide-constructors
 
 # Debug or Release
 # BUILD = Debug
-BUILD = Release
+BUILD = Debug
 
 # Folder name setting
 SRC_DIR = src

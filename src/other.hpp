@@ -1,26 +1,17 @@
 #define R_UP_DIV_(X, delim) (((X) + (delim) - 1) / (delim))
 #define R_UP_DIV(X) R_UP_DIV_(X, sizeof(block_t) * 8)
 #define R_UP_NO_DIV(X) (R_UP_DIV(X) * sizeof(block_t) * 8)
+#define R_DOWN_DIV_(X, delim) ((X) / (delim))
+#define R_DOWN_DIV(X) R_DOWN_DIV_(X, sizeof(block_t) * 8)
+#define R_DOWN_NO_DIV(X) (R_DOWN_DIV(X) * sizeof(block_t) * 8)
+
 #define SET_BIT(VAR, OFFSET, VAL) (VAR) = (((VAR) & ~(1ULL << (OFFSET))) | ((uint64_t)(VAL) << (OFFSET)))
+
 template<>
 class Vector<bool> {
 public:
     using block_t=uint16_t;
-    class reference {
-    public:
-        reference& operator=(const bool other) {
-            (*ptr) = (*ptr) & ~(1ULL << offset) | ((uint64_t)other << offset);
-            return *this;
-        }
-
-        reference& operator=(const reference& other) {
-            return operator=((bool)( (*other.ptr >> offset) & ~1ULL ));
-        }
-    private:
-        uint8_t* ptr = nullptr;
-        uint8_t offset = 0;
-
-    };
+    class BitRef;
 
     Vector();
 
@@ -32,19 +23,17 @@ public:
 
     ~Vector();
 
-    class iterator;
+    BitRef begin();
 
-    iterator begin();
+    BitRef begin() const;
 
-    iterator begin() const;
-
-    iterator end();
+    BitRef end();
     
-    iterator end() const;
+    BitRef end() const;
 
-    iterator cbegin() const;
+    BitRef cbegin() const;
 
-    iterator cend() const;
+    BitRef cend() const;
 
 
     bool empty() const;
@@ -80,25 +69,27 @@ public:
 
     void clear();
 
-    void push_back(const reference elem);
+    void push_back(bool val);
+    
+    void push_back(BitRef val);
 
     void pop_back();
 
-    reference at(int ind);
+    BitRef at(int ind);
 
-    const reference at(int ind) const;
+    const BitRef at(int ind) const;
 
-    reference operator[](int ind);
+    BitRef operator[](int ind);
 
-    const reference operator[](int ind) const;
+    const BitRef operator[](int ind) const;
 
-    reference front();
+    BitRef front();
 
-    const reference front() const;
+    const BitRef front() const;
 
-    reference back();
+    BitRef back();
 
-    const reference back() const;
+    const BitRef back() const;
 
     char* data();
 
@@ -113,6 +104,125 @@ private:
     size_t       real_capacity_;
                         
 };
+
+// template<>
+// inline T* Vector<bool>::data()
+// {
+//     return data_;
+// }
+
+
+
+// template<>
+// inline const T* Vector<bool>::data() const
+// {
+//     return data_;
+// }
+
+// //-----------------------ITERATOR-------------------------
+
+class Vector<bool>::BitRef{
+public:
+    using iterator_category = std::random_access_iterator_tag ;
+    using difference_type   = std::ptrdiff_t;
+    using value_type        = bool;
+
+    BitRef(BitRef&& other) : ptr(other.ptr), offset(other.offset) {}
+
+    BitRef(const BitRef& other) : ptr(other.ptr), offset(other.offset) {}
+
+    BitRef& operator=(const bool other) {
+        (*ptr) = (((*ptr) & ~(1ULL << offset)) | ((uint64_t)other << offset));
+        return *this;
+    }
+
+    BitRef& operator=(const BitRef& other) {
+        return operator=((bool)( (*other.ptr >> offset) & ~1ULL ));
+    }
+
+    BitRef& operator=(BitRef&& other) {
+        this->ptr = other.ptr;
+        this->offset = other.offset;
+        return *this;
+    }
+
+    BitRef(block_t* ptr, uint8_t offset) : ptr(ptr), offset(offset) {}
+
+    bool operator*() const { return (((*ptr) >> offset) & 1ULL);}
+
+    BitRef& operator++() {
+        if (offset == (sizeof(block_t) * 8 - 1)) {
+            ptr++;
+            offset = 0;
+        } else {
+            offset++;
+        }
+        return *this;
+    }
+
+    BitRef operator++(int) {
+        BitRef tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+
+    BitRef& operator--() {
+        if (offset == 0) {
+            ptr--;
+            offset = sizeof(block_t) * 8 - 1;
+        } else {
+            offset--;
+        }
+        return *this;
+    }
+
+    BitRef operator--(int) {
+        BitRef tmp = *this;
+        --(*this);
+        return tmp;
+    }
+
+    friend ptrdiff_t operator-(const BitRef& a, const BitRef& b) {return (b.ptr - a.ptr) * (sizeof(block_t) * 8) + b.offset - a.offset;}
+
+    friend bool operator==(const BitRef& a, const BitRef& b) {return (a.ptr == b.ptr) && (a.offset == b.offset);}
+    friend bool operator!=(const BitRef& a, const BitRef& b) {return !(a == b);}
+
+    friend bool operator<(const BitRef& a, const BitRef& b)  {return (a.ptr < b.ptr) || (a.ptr == b.ptr && a.offset < b.offset);}
+    friend bool operator>(const BitRef& a, const BitRef& b)  {return !(a < b || a == b);}
+    
+    friend bool operator<=(const BitRef& a, const BitRef& b) {return !(a > b); }
+    friend bool operator>=(const BitRef& a, const BitRef& b) {return !(a < b);}
+
+    BitRef& operator+=(int64_t val) {
+        this->ptr += (int64_t)((val) / (int64_t)(sizeof(block_t) * 8));
+        this->ptr += (int64_t)(val % int64_t((sizeof(block_t) * 8)) + offset) / int64_t((sizeof(block_t) * 8));
+        this->offset = (int64_t)(val % int64_t(sizeof(block_t) * 8) + (int64_t)offset) % int64_t(sizeof(block_t) * 8);
+        return *this;
+    }
+
+    BitRef& operator-=(int64_t val) {
+        return this->operator+=(-val);
+    }
+
+    BitRef operator+(int64_t val) {
+        BitRef tmp = *this;
+        tmp += val;
+        return tmp;
+    }
+
+    BitRef operator-(int64_t val) {
+        return this->operator+(-val);
+    }
+
+    friend std::ostream& operator<<(std::ostream&, BitRef);
+
+private:
+    block_t* ptr = nullptr;
+    uint8_t offset = 0;
+
+    friend class Vector<bool>;
+};
+
 
 
 
@@ -193,52 +303,54 @@ void Vector<bool>::resize(size_t newsize, bool val)
         data_[index] = (~(static_cast<block_t>(val)));
     }
 
-    for (size_t index = size_, cur_bit = 0; index <= R_UP_NO_DIV(size_); ++index, ++cur_bit) {
-        SET_BIT(data_[R_UP_DIV(size_)], sizeof(block_t) * 8 - 1 - cur_bit, val);
+    for (size_t index = size_, cur_bit = 0; index < R_UP_NO_DIV(size_); ++index, ++cur_bit) {
+        SET_BIT(data_[R_DOWN_DIV(size_)], sizeof(block_t) * 8 - 1 - cur_bit, val);
     }
-
-
-    // for (int index = size_; index < newsize; ++index)
-    //     data_[index] = T();
 
     size_ = newsize;
 }
 
-// //TODO:
-// template<>
-// void Vector<bool>::initialize_elems(size_t& lft, size_t rht) {
-//     size_t cur_idx = lft;
-//     try {
-//         for (; cur_idx < size_; cur_idx++)
-//             new (data_ + cur_idx * sizeof(T)) T();
-//     } catch(...) {
-//         deinitialize_elems(lft, cur_idx);
-//         throw;
-//     }
-// }
+//TODO:
+void Vector<bool>::initialize_elems(size_t& lft, size_t rht) {
+    // size_t cur_idx = lft;
+    // try {
+    for (size_t index = R_UP_DIV(lft); index < R_DOWN_DIV(rht); ++index){
+        data_[index] = (~(static_cast<block_t>(0)));
+    }
+
+    for (size_t index = lft, cur_bit = 0; index < R_UP_NO_DIV(lft); ++index, ++cur_bit) {
+        SET_BIT(data_[R_DOWN_DIV(lft)], sizeof(block_t) * 8 - 1 - cur_bit, 0);
+    }
+
+    for (size_t index = R_DOWN_NO_DIV(rht), cur_bit = 0; index < rht; ++index, ++cur_bit) {
+        SET_BIT(data_[R_DOWN_DIV(rht)], sizeof(block_t) * 8 - 1 - cur_bit, 0);
+    }
+}
 
 // //TODO:
-// template<>
-// void Vector<bool>::deinitialize_elems(size_t& lft, size_t rht) {
-//     try {
-//         for (uint64_t it = lft; it < rht; ++it) 
-//             (T*)(data_ + it*sizeof(T))->~T();
-//             this->~Vector<bool>();
-//     } catch(...) {
-//         throw;
-//     }
-// }
+void Vector<bool>::deinitialize_elems(size_t& lft, size_t rht) {
+    (void)rht;
+    (void)lft;
+    return;
+}
+
+
+void Vector<bool>::fill_poison() {
+    size_     = 0;
+    capacity_ = 0;
+    data_     = nullptr;
+    real_capacity_ = 0;
+    return;
+}
 
 // //TODO:
 // template<>
 // void* Vector<bool>::operator new(size_t sz) {
 //     std::cout << "Operator new for class DataStructures::Vector";
-
 //     char* newData = (char*) calloc(sz, 1);
 //     if (newData == nullptr) {
 //         throw std::bad_alloc();
 //     }
-
 //     return newData;
 // }
 
@@ -247,169 +359,120 @@ void Vector<bool>::resize(size_t newsize, bool val)
 // template<>
 // void* Vector<bool>::operator new[](uint64_t size) {
 //     std::cout << "Operator new[] for class DataStructures::Vector" << std::endl;
-
 //     void* newData = calloc(size, 1);
 //     if (!newData) {
 //         throw std::bad_alloc();
 //     }
-
 //     return newData;
 // }
 
 // //TODO:
-// template<>
-// inline void Vector<bool>::push_back(const reference d)
-// {
-//     if (this->capacity_ == 0)
-//         reserve(8);
-//     else if (size_ == capacity_)
-//         reserve(2 * capacity_);
+void Vector<bool>::push_back(bool val)
+{
+    if (this->capacity_ == 0)
+        reserve(8);
+    else if (size_ == capacity_)
+        reserve(2 * capacity_);
 
-//     data_[size_] = d;
+    operator[](size_++) = val;
+    // data_[size_] = val;
 
-//     ++size_;
-// }
+    // ++size_;
+}
 
-
-
-// //-------------------INDEXATION SECTION---------------------
-// template<>
-// inline bool & Vector<bool>::at(int ind)
-// {
-//     if (ind < 0 || size_ <= ind) throw out_of_range();
-//     return data_[ind];
-// }
-
-// template<>
-// inline const bool & Vector<bool>::at(int ind) const
-// {
-//     if (ind < 0 || size_ <= ind) throw out_of_range();
-//     return data_[ind];
-// }
-
-// template<>
-// inline bool & Vector<bool>::operator[](int ind)
-// {
-//     return data_[ind];
-// }
-
-// template<>
-// inline const bool & Vector<bool>::operator[](int ind) const
-// {
-//     return const_cast<const reference>operator[](ind);
-// }
-
-
-// template<>
-// inline reference Vector<bool>::front()
-// {
-//     return data_[0];
-// }
-
-// template<>
-// inline const reference Vector<bool>::front() const
-// {
-//     return data_[0];
-// }
-
-// template<>
-// inline reference Vector<bool>::back()
-// {
-//     return data_[size_ - 1];
-// }
-
-// template<>
-// inline const reference Vector<bool>::back() const
-// {
-//     return data_[size_ - 1];
-// }
-
-// template<>
-// inline T* Vector<bool>::data()
-// {
-//     return data_;
-// }
+void Vector<bool>::push_back(Vector<bool>::BitRef val)
+{
+    push_back(((*val.ptr) >> val.offset) & 1ULL);
+}
 
 
 
-// template<>
-// inline const T* Vector<bool>::data() const
-// {
-//     return data_;
-// }
+//-------------------INDEXATION SECTION---------------------
+Vector<bool>::BitRef Vector<bool>::at(int ind)
+{
+    if (ind < 0 || size_ <= (size_t)ind) throw out_of_range();
+    return (*this)[ind];
+}
 
-// //-----------------------ITERATOR-------------------------
+const Vector<bool>::BitRef Vector<bool>::at(int ind) const
+{
+    if (ind < 0 || size_ <= (size_t)ind) throw out_of_range();
+    return (*this)[ind];
+}
 
-// template<> class Vector<bool>::iterator
-// {
-// public:
-//     iterator(T* ptr)
-//         :_curr(ptr)
-//     {}
+Vector<bool>::BitRef Vector<bool>::operator[](int ind)
+{
+    // std::cout << "creating bitref with offset " << ind - R_DOWN_NO_DIV(ind) << "\n";
+    return BitRef((block_t*)data_ + R_DOWN_DIV(ind), ind - R_DOWN_NO_DIV(ind));
+}
 
-//     iterator& operator++()
-//     {
-//         _curr++;
-//         return *this;
-//     }
+const Vector<bool>::BitRef Vector<bool>::operator[](int ind) const
+{
+    return operator[](ind);
+}
 
-//     iterator& operator--()
-//     {
-//         _curr--;
-//         return *this;
-//     }
+Vector<bool>::~Vector() {
+    delete[] data_;
+}
 
-//     reference operator*()
-//     {
-//         return *_curr;
-//     }
+Vector<bool>::BitRef Vector<bool>::front()
+{
+    return BitRef((block_t*)data_, 0);
+}
 
-//     bool operator==(const iterator& ptr) const
-//     {
-//         return *_curr == *ptr._curr;
-//     }
+const Vector<bool>::BitRef Vector<bool>::front() const
+{
+    return BitRef((block_t*)data_, 0);
+}
 
-//     bool operator!=(const iterator& ptr) const
-//     {
-//         return *_curr != *ptr._curr;
-//     }
+Vector<bool>::BitRef Vector<bool>::back()
+{
+    
+    return BitRef((block_t*)data_ + R_DOWN_DIV(size_ - 1), (size_ - 1) - R_DOWN_NO_DIV(size_ - 1));
+}
 
-// private:
-//     T* _curr;
-// };
+const Vector<bool>::BitRef Vector<bool>::back() const
+{
+    return BitRef((block_t*)data_ + R_DOWN_DIV(size_ - 1), (size_ - 1) - R_DOWN_NO_DIV(size_ - 1));
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::begin()
-// {    
-//     return Vector<bool>::iterator(&data_[0]);
-// }
+Vector<bool>::BitRef Vector<bool>::begin()
+{    
+    return Vector<bool>::BitRef((block_t*)data_, 0);
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::begin() const
-// {
-//     return Vector<bool>::iterator(&data_[0]);
-// }
+Vector<bool>::BitRef Vector<bool>::begin() const
+{
+    return Vector<bool>::BitRef((block_t*)data_, 0);
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::end()
-// {
-//     return Vector<bool>::iterator(&data_[size_]);
-// }
+Vector<bool>::BitRef Vector<bool>::end()
+{
+    return Vector<bool>::BitRef((block_t*)data_ + R_DOWN_DIV(size_), (size_) - R_DOWN_NO_DIV(size_));
+    // return Vector<bool>::BitRef((block_t*)data_ + R_DOWN_DIV(size_ - 1), (size_ - 1) - R_DOWN_NO_DIV(size_ - 1));
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::end() const
-// {
-//     return Vector<bool>::iterator(&data_[size_]);
-// }
+Vector<bool>::BitRef Vector<bool>::end() const
+{
+    return Vector<bool>::BitRef((block_t*)data_ + R_DOWN_DIV(size_), (size_) - R_DOWN_NO_DIV(size_));
+    // return Vector<bool>::BitRef((block_t*)data_ + R_DOWN_DIV(size_ - 1), (size_ - 1) - R_DOWN_NO_DIV(size_ - 1));
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::cbegin() const
-// {
-//     return Vector<bool>::iterator(&data_[0]);
-// }
+Vector<bool>::BitRef Vector<bool>::cbegin() const
+{
+    return Vector<bool>::BitRef((block_t*)data_, 0);
+}
 
-// template<>
-// inline typename Vector<bool>::iterator Vector<bool>::cend() const
-// {
-//     return Vector<bool>::iterator(&data_[size_]);
-// }
+Vector<bool>::BitRef Vector<bool>::cend() const
+{
+    return Vector<bool>::BitRef((block_t*)data_ + R_DOWN_DIV(size_), size_ - R_DOWN_NO_DIV(size_));
+}
+
+
+std::ostream& operator<<(std::ostream& stream, Vector<bool>::BitRef ref) {
+    // std::string s = std::format("{:x}", byte(ref.ptr));
+    stream << "ptr: 0x" << std::hex << (uint64_t)ref.ptr << std::dec << "\n"; 
+    stream << "offset:" << (uint64_t)ref.offset << std::dec << "\n"; 
+    stream << (*ref);
+    return stream;
+}
